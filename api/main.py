@@ -1,14 +1,17 @@
-import torch
-import torch.nn as nn
+# api/main.py
+
+import io
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
-from torchvision import models, transforms
-import io
+import torch
+from torchvision import transforms
 
+# ------------------------
+# App Initialization
+# ------------------------
 app = FastAPI(title="MedSight AI Backend")
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # replace "*" with frontend URL in production
@@ -16,29 +19,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Model setup
+# ------------------------
+# Model Setup
+# ------------------------
 MODEL_PATH = "models/malaria_model.pth"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# 1️⃣ Define the model architecture exactly like in training
-model = models.resnet18()  # <-- replace if you used a different model
-num_ftrs = model.fc.in_features
-model.fc = nn.Linear(num_ftrs, 2)  # 2 classes: Parasitized / Uninfected
+# Load the full model object directly
+try:
+    model = torch.load(MODEL_PATH, map_location=device)
+    model.to(device)
+    model.eval()
+except Exception as e:
+    raise RuntimeError(f"Failed to load model: {e}")
 
-# 2️⃣ Load the state dict
-state_dict = torch.load(MODEL_PATH, map_location=device)
-model.load_state_dict(state_dict)
-
-# 3️⃣ Send model to device and set to eval
-model = model.to(device)
-model.eval()
-
-# 4️⃣ Image transforms
+# Define image transformations
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
 ])
 
+# ------------------------
+# Routes
+# ------------------------
 @app.get("/")
 def read_root():
     return {"message": "MedSight AI backend is running"}
@@ -58,6 +61,5 @@ async def predict(file: UploadFile = File(...)):
             label = "Parasitized" if predicted.item() == 0 else "Uninfected"
 
         return {"prediction": label}
-
     except Exception as e:
         return {"error": str(e)}
