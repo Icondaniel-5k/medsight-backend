@@ -21,24 +21,24 @@ MODEL_PATH = "models/malaria_model.pth"
 
 
 # -------------------------
-# Recreate your CNN model
+# EXACT MODEL ARCHITECTURE
 # -------------------------
 class MalariaCNN(nn.Module):
     def __init__(self):
         super().__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv2d(3, 32, 3, padding=1),
+            nn.Conv2d(3, 16, 3, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2),
 
-            nn.Conv2d(32, 64, 3, padding=1),
+            nn.Conv2d(16, 32, 3, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2)
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(64 * 56 * 56, 128),
+            nn.Linear(8192, 128),
             nn.ReLU(),
             nn.Linear(128, 2)
         )
@@ -51,7 +51,7 @@ class MalariaCNN(nn.Module):
 
 
 # -------------------------
-# Load model weights
+# LOAD MODEL
 # -------------------------
 model = MalariaCNN()
 
@@ -60,46 +60,41 @@ state_dict = torch.load(MODEL_PATH, map_location=device)
 model.load_state_dict(state_dict)
 
 model.to(device)
+
 model.eval()
 
 
 # -------------------------
-# Image preprocessing
+# IMAGE TRANSFORM
 # -------------------------
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
+    transforms.Resize((64, 64)),   # IMPORTANT
+    transforms.ToTensor()
 ])
 
 
 # -------------------------
-# Routes
+# ROUTES
 # -------------------------
 @app.get("/")
 def home():
-    return {"message": "MedSight AI backend is running"}
+    return {"message": "MedSight AI backend running"}
 
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    try:
 
-        image_bytes = await file.read()
+    image_bytes = await file.read()
 
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        image = transform(image).unsqueeze(0).to(device)
+    image = transform(image).unsqueeze(0).to(device)
 
-        with torch.no_grad():
+    with torch.no_grad():
+        outputs = model(image)
 
-            outputs = model(image)
+        _, predicted = torch.max(outputs, 1)
 
-            _, predicted = torch.max(outputs, 1)
+        label = "Parasitized" if predicted.item() == 0 else "Uninfected"
 
-            label = "Parasitized" if predicted.item() == 0 else "Uninfected"
-
-        return {"prediction": label}
-
-    except Exception as e:
-
-        return {"error": str(e)}
+    return {"prediction": label}
